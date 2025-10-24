@@ -10,14 +10,6 @@ Before installing Sqoop, ensure you have:
 - User with sudo privileges
 - Internet connection for downloading dependencies
 
-## Environment Details
-
-This installation was performed on:
-- **Hadoop Version**: 3.3.6
-- **Java Version**: OpenJDK 11
-- **Sqoop Version**: 1.4.7
-- **Hadoop Installation Path**: `/usr/local/hadoop`
-- **Sqoop Installation Path**: `/usr/local/sqoop`
 
 ## Installation Steps
 
@@ -139,6 +131,24 @@ For other databases, download their respective JDBC drivers and place them in `$
 - **SQL Server**: `mssql-jdbc-x.x.x.jrex.jar`
 - **MySQL**: `mysql-connector-java-x.x.x.jar`
 
+### Step 6.1: Install Required Dependencies (IMPORTANT)
+
+Sqoop requires Apache Commons Lang library to avoid `NoClassDefFoundError: org/apache/commons/lang/StringUtils` errors:
+
+```bash
+# Install Apache Commons Lang library
+sudo apt-get update
+sudo apt-get install -y libcommons-lang-java
+
+# Copy the commons-lang jar to Sqoop lib directory
+cp /usr/share/java/commons-lang-2.6.jar $SQOOP_HOME/lib/
+
+# Verify the jar is installed
+ls -la $SQOOP_HOME/lib/ | grep commons-lang
+```
+
+**Note**: Sqoop comes with commons-lang3 but requires commons-lang (version 2.x) for the StringUtils class.
+
 ### Step 7: Verify Installation
 
 Test the Sqoop installation:
@@ -159,22 +169,48 @@ You may see some warnings about HBase, HCatalog, Accumulo, and Zookeeper not bei
 
 ## Post-Installation Configuration
 
+### MySQL Server Verification
+
+Ensure you have MySQL server setup and configured for remote connections. If you need help setting up MySQL, visit: https://github.com/SoyVitouPro/MySQL-Only-No-MySQL-Admin for complete setup instructions.
+
+After installing MySQL or using an existing MySQL setup, run these commands to verify connectivity:
+
+```bash
+# Test network connectivity to MySQL server
+ping mysql_server_ip
+
+# Test Sqoop connection
+sqoop list-databases --connect jdbc:mysql://mysql_server_ip:port --username username --password password
+```
+
 ### Testing Sqoop with a Sample Database Connection
 
 To test Sqoop with a database, you can use the following command structure:
 
 ```bash
-# List databases on a MySQL server
+# List databases on a MySQL server (replace with actual IP and port)
 sqoop list-databases \
-    --connect jdbc:mysql://hostname:3306/ \
+    --connect jdbc:mysql://mysql_server_ip:port/ \
     --username username \
     --password password
 
+# Example with working configuration:
+sqoop list-databases \
+    --connect jdbc:mysql://172.17.199.56:4987 \
+    --username ikhode \
+    --password ikhode2357.!
+
 # List tables in a specific database
 sqoop list-tables \
-    --connect jdbc:mysql://hostname:3306/database_name \
+    --connect jdbc:mysql://mysql_server_ip:port/database_name \
     --username username \
     --password password
+
+# Example listing tables:
+sqoop list-tables \
+    --connect jdbc:mysql://172.17.199.56:4987/mydb \
+    --username ikhode \
+    --password ikhode2357.!
 ```
 
 ### Common Sqoop Commands
@@ -222,13 +258,40 @@ sqoop export \
    export HADOOP_CLASSPATH=$(hadoop classpath)
    ```
 
-3. **Database connection errors**
-   - Verify JDBC driver is in `$SQOOP_HOME/lib/`
-   - Check database connectivity
-   - Verify connection string format
-   - Ensure database server is accessible from the cluster
+3. **NoClassDefFoundError: org/apache/commons/lang/StringUtils**
+   ```bash
+   # This error occurs because Sqoop needs commons-lang (not commons-lang3)
+   sudo apt-get install -y libcommons-lang-java
+   cp /usr/share/java/commons-lang-2.6.jar $SQOOP_HOME/lib/
 
-4. **Permission issues**
+   # Verify installation
+   ls -la $SQOOP_HOME/lib/ | grep commons-lang
+   ```
+
+4. **Database connection errors**
+   - Verify JDBC driver is in `$SQOOP_HOME/lib/`
+   - Check database connectivity with `nc -zv mysql_server_ip 3306`
+   - Verify connection string format (use correct port, especially for Docker)
+   - Ensure database server is accessible from the cluster
+   - Check if MySQL user has remote access privileges
+   - Verify MySQL bind-address configuration (should be 0.0.0.0 for remote access)
+
+5. **Connection timeout errors**
+   ```bash
+   # Test network connectivity
+   ping mysql_server_ip
+
+   # Check port accessibility
+   telnet mysql_server_ip 3306
+
+   # For Docker containers, verify port mapping
+   docker ps | grep mysql
+
+   # Check MySQL configuration for remote access
+   # In MySQL config: bind-address = 0.0.0.0
+   ```
+
+6. **Permission issues**
    ```bash
    # Check permissions
    ls -la /usr/local/sqoop/
@@ -273,6 +336,8 @@ Sqoop is now configured to work with your existing Hadoop 3.3.6 cluster. The ins
 
 ## Verification Commands
 
+### Sqoop Installation Verification
+
 ```bash
 # Verify Sqoop installation
 sqoop version
@@ -286,6 +351,56 @@ hadoop classpath
 
 # Test Sqoop help
 sqoop help
+
+# Verify required dependencies are installed
+ls -la $SQOOP_HOME/lib/ | grep commons-lang
+ls -la $SQOOP_HOME/lib/ | grep mysql-connector
+```
+
+### MySQL Connection Verification
+
+```bash
+# 1. Test basic network connectivity
+ping mysql_server_ip
+
+# 2. Test MySQL port accessibility
+nc -zv mysql_server_ip mysql_port
+
+# 3. For Docker MySQL containers, check port mapping
+docker ps | grep mysql
+
+# 4. Test MySQL connection with MySQL client
+mysql -h mysql_server_ip -P mysql_port -u username -p
+
+# 5. Verify Sqoop-MySQL connection
+sqoop list-databases \
+    --connect jdbc:mysql://mysql_server_ip:mysql_port \
+    --username username \
+    --password password
+
+# 6. Test actual data import (optional)
+sqoop import \
+    --connect jdbc:mysql://mysql_server_ip:mysql_port/database_name \
+    --username username \
+    --password password \
+    --table table_name \
+    --target-dir /user/hadoop/test_import \
+    --m 1
+```
+
+### Complete Working Example
+
+```bash
+# Working example with specific configuration
+sqoop list-databases \
+    --connect jdbc:mysql://172.17.199.56:4987 \
+    --username ikhode \
+    --password ikhode2357.!
+
+# Expected output:
+# information_schema
+# performance_schema
+# mydb
 ```
 
 Sqoop is now successfully installed and configured to work with your Hadoop 3.3.6 cluster!
